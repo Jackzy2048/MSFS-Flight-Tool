@@ -1,0 +1,1325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MSFS Flight Journal</title>
+
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+<link rel="icon" href="icons/icon-32.png" sizes="32x32" type="image/png" />
+<link rel="icon" href="icons/icon-16.png" sizes="16x16" type="image/png" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+<meta name="theme-color" content="#0A121D" />
+
+<!-- iOS "Add to Home Screen" behaves like a standalone app instead of opening in Safari -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Flight Journal" />
+
+<!--
+  This is a build-free, single-file version of the app: React and React DOM
+  are loaded as classic global scripts from unpkg (the same pattern React's
+  own docs have long recommended for no-build pages), and Babel Standalone
+  transforms the JSX in the browser. There's no npm install, no bundler,
+  nothing to compile — just open this file in a browser, or drop it in any
+  static host (GitHub Pages, Netlify, a plain web server, etc).
+
+  Trade-off vs. the full Vite project: everything lives in one file instead
+  of being split into components/screens/modals, and JSX is compiled at
+  page-load time in the visitor's browser rather than ahead of time, which
+  is slightly slower to first render and relies on the CDN being up.
+  For a small personal app like this, that's a reasonable trade.
+-->
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  body { background: #0a121d; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useEffect, useMemo, useState } = React;
+
+/* ============================== icons ==================================
+   Small inline SVG icons, styled to match a clean line-icon look. Kept
+   local (no external icon library) so this file has zero dependencies
+   beyond React itself. */
+
+function Icon({ children, size = 16, color, fill = "none", style, ...rest }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      style={{ color, flexShrink: 0, display: "inline-block", verticalAlign: "middle", ...style }} {...rest}>
+      {children}
+    </svg>
+  );
+}
+
+const Home = (p) => <Icon {...p}><path d="M3 11.5 12 4l9 7.5" /><path d="M5 10v10h14V10" /><path d="M9 20v-6h6v6" /></Icon>;
+const Heart = (p) => <Icon {...p}><path d="M12 20.5S3.5 15.4 3.5 9.4C3.5 6.4 5.8 4 8.7 4c1.7 0 3.2.9 3.3 2.4C12.1 4.9 13.6 4 15.3 4c2.9 0 5.2 2.4 5.2 5.4 0 6-8.5 11.1-8.5 11.1Z" /></Icon>;
+const ListChecks = (p) => <Icon {...p}><path d="m4 6 1.5 1.5L8 5" /><path d="M11 6h9" /><path d="m4 12 1.5 1.5L8 11" /><path d="M11 12h9" /><path d="m4 18 1.5 1.5L8 17" /><path d="M11 18h9" /></Icon>;
+const Dices = (p) => <Icon {...p}><rect x="3" y="3" width="9" height="9" rx="2" /><circle cx="6" cy="6" r=".6" fill="currentColor" /><circle cx="9" cy="9" r=".6" fill="currentColor" /><rect x="12" y="12" width="9" height="9" rx="2" /><circle cx="15" cy="15" r=".6" fill="currentColor" /><circle cx="18" cy="15" r=".6" fill="currentColor" /><circle cx="15" cy="18" r=".6" fill="currentColor" /><circle cx="18" cy="18" r=".6" fill="currentColor" /></Icon>;
+const BarChart3 = (p) => <Icon {...p}><path d="M4 20V10" /><path d="M12 20V4" /><path d="M20 20v-7" /><path d="M2 20h20" /></Icon>;
+const Plane = (p) => <Icon {...p}><path d="M12 2v20" /><path d="M2 12h20" /><path d="m12 2 6 6-6 4-6-4 6-6Z" /><path d="M8 18h8l-2 3h-4l-2-3Z" /></Icon>;
+const Settings2 = (p) => <Icon {...p}><circle cx="12" cy="12" r="3" /><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M3 12h2M19 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" /></Icon>;
+const X = (p) => <Icon {...p}><path d="M18 6 6 18M6 6l12 12" /></Icon>;
+const Plus = (p) => <Icon {...p}><path d="M12 5v14M5 12h14" /></Icon>;
+const Star = ({ fill, ...p }) => <Icon fill={fill || "none"} {...p}><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2" /></Icon>;
+const MapPin = (p) => <Icon {...p}><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21Z" /><circle cx="12" cy="9.5" r="2.3" /></Icon>;
+const Trash2 = (p) => <Icon {...p}><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="M6 7l1 13h10l1-13" /><path d="M10 11v6M14 11v6" /></Icon>;
+const Pencil = (p) => <Icon {...p}><path d="m4 20 1-4 11-11 3 3-11 11-4 1Z" /><path d="m14.5 5.5 3 3" /></Icon>;
+const ChevronRight = (p) => <Icon {...p}><path d="m9 5 7 7-7 7" /></Icon>;
+const ArrowRight = (p) => <Icon {...p}><path d="M4 12h15" /><path d="m13 6 6 6-6 6" /></Icon>;
+const Check = (p) => <Icon {...p}><path d="M20 6 9 17l-5-5" /></Icon>;
+const Gauge = (p) => <Icon {...p}><path d="M4 15a8 8 0 1 1 16 0" /><path d="M12 15 15 9" /><circle cx="12" cy="15" r="1" fill="currentColor" /></Icon>;
+const RefreshCw = (p) => <Icon {...p}><path d="M3 12a9 9 0 0 1 15.3-6.4L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15.3 6.4L3 16" /><path d="M8 21H3v-5" /></Icon>;
+const Camera = (p) => <Icon {...p}><path d="M4 8h3l2-2h6l2 2h3v11H4Z" /><circle cx="12" cy="13.5" r="3.2" /></Icon>;
+const Search = (p) => <Icon {...p}><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></Icon>;
+const PlaneTakeoff = (p) => <Icon {...p}><path d="M3 21h18" /><path d="M6 16l4-1 8-6c1-.7 2-.3 1.6.9-.4 1.2-1.9 2.3-3.1 2.7l-8 2.6-2.5-.7-.9.7L4 16Z" /></Icon>;
+const PlaneLanding = (p) => <Icon {...p}><path d="M3 21h18" /><path d="M4 15l3-1.5 9.5-3c1.4-.4 2.6.3 2.6 1.5 0 1.1-1 2-2.3 2.4l-9.6 2.9-1.9-1-1.3.7Z" /></Icon>;
+const Clock3 = (p) => <Icon {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5h4" /></Icon>;
+
+
+/* ============================== storage ================================
+   Uses window.storage when this is viewed inside a Claude.ai artifact
+   (per-user persistent storage provided by the host), and falls back to
+   the browser's own localStorage everywhere else — which is what applies
+   when you're running this as a plain hosted page. */
+
+const hasNativeStorage =
+  typeof window !== "undefined" &&
+  window.storage &&
+  typeof window.storage.get === "function" &&
+  typeof window.storage.set === "function";
+
+async function storageGet(key) {
+  if (hasNativeStorage) {
+    try {
+      const res = await window.storage.get(key, false);
+      return res ? res.value : null;
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+async function storageSet(key, value) {
+  if (hasNativeStorage) {
+    try {
+      await window.storage.set(key, value, false);
+      return true;
+    } catch (e) {
+      console.error("storage set failed", key, e);
+      return false;
+    }
+  }
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    console.error("storage set failed", key, e);
+    return false;
+  }
+}
+
+async function loadKey(key, fallback) {
+  const raw = await storageGet(key);
+  if (raw == null) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+async function saveKey(key, value) {
+  await storageSet(key, JSON.stringify(value));
+}
+
+/* ============================== constants =============================== */
+
+const AIRCRAFT_MODELS = [
+  "A320neo", "A321neo", "A330-300", "A350-900", "A350-1000", "A380",
+  "B737-800", "B737 MAX 8", "B777-300ER", "B787-9", "B787-10",
+  "CRJ-700", "ATR 72", "TBM 930", "Cessna 172",
+];
+
+const AIRLINES = [
+  "Air New Zealand", "Qantas", "Virgin Australia", "Emirates", "British Airways",
+  "Singapore Airlines", "Cathay Pacific", "Japan Airlines", "ANA", "Lufthansa",
+  "Air France", "KLM", "American Airlines", "Delta Air Lines", "United Airlines",
+  "LATAM", "Air Canada", "Qatar Airways", "Turkish Airlines",
+  "South African Airways", "Ethiopian Airlines", "Fiji Airways",
+];
+
+const REGIONS = ["Oceania", "Asia", "Europe", "North America", "South America", "Africa"];
+
+const ROUTES = [
+  { id: "r1", from: { code: "NZAA", city: "Auckland", flag: "🇳🇿" }, to: { code: "YSSY", city: "Sydney", flag: "🇦🇺" }, region: "Oceania", airline: "Air New Zealand", aircraft: "B787-9", durationMin: 215, distanceKm: 2160, difficulty: 2 },
+  { id: "r2", from: { code: "YSSY", city: "Sydney", flag: "🇦🇺" }, to: { code: "NZAA", city: "Auckland", flag: "🇳🇿" }, region: "Oceania", airline: "Qantas", aircraft: "A330-300", durationMin: 210, distanceKm: 2160, difficulty: 2 },
+  { id: "r3", from: { code: "NZWN", city: "Wellington", flag: "🇳🇿" }, to: { code: "YBBN", city: "Brisbane", flag: "🇦🇺" }, region: "Oceania", airline: "Air New Zealand", aircraft: "B737-800", durationMin: 225, distanceKm: 2200, difficulty: 3 },
+  { id: "r4", from: { code: "NZQN", city: "Queenstown", flag: "🇳🇿" }, to: { code: "YMML", city: "Melbourne", flag: "🇦🇺" }, region: "Oceania", airline: "Qantas", aircraft: "A320neo", durationMin: 200, distanceKm: 2160, difficulty: 4 },
+  { id: "r5", from: { code: "NFFN", city: "Nadi", flag: "🇫🇯" }, to: { code: "NZAA", city: "Auckland", flag: "🇳🇿" }, region: "Oceania", airline: "Fiji Airways", aircraft: "A330-300", durationMin: 230, distanceKm: 2100, difficulty: 2 },
+  { id: "r6", from: { code: "WSSS", city: "Singapore", flag: "🇸🇬" }, to: { code: "VHHH", city: "Hong Kong", flag: "🇭🇰" }, region: "Asia", airline: "Singapore Airlines", aircraft: "A350-900", durationMin: 235, distanceKm: 2570, difficulty: 2 },
+  { id: "r7", from: { code: "RJTT", city: "Tokyo", flag: "🇯🇵" }, to: { code: "RKSI", city: "Seoul", flag: "🇰🇷" }, region: "Asia", airline: "Japan Airlines", aircraft: "B787-9", durationMin: 140, distanceKm: 1280, difficulty: 2 },
+  { id: "r8", from: { code: "VHHH", city: "Hong Kong", flag: "🇭🇰" }, to: { code: "RJAA", city: "Tokyo Narita", flag: "🇯🇵" }, region: "Asia", airline: "Cathay Pacific", aircraft: "A350-1000", durationMin: 270, distanceKm: 2900, difficulty: 2 },
+  { id: "r9", from: { code: "WSSS", city: "Singapore", flag: "🇸🇬" }, to: { code: "WIII", city: "Jakarta", flag: "🇮🇩" }, region: "Asia", airline: "Singapore Airlines", aircraft: "B737 MAX 8", durationMin: 100, distanceKm: 890, difficulty: 2 },
+  { id: "r10", from: { code: "RJTT", city: "Tokyo", flag: "🇯🇵" }, to: { code: "WSSS", city: "Singapore", flag: "🇸🇬" }, region: "Asia", airline: "ANA", aircraft: "B777-300ER", durationMin: 415, distanceKm: 5300, difficulty: 2 },
+  { id: "r11", from: { code: "EGLL", city: "London", flag: "🇬🇧" }, to: { code: "LFPG", city: "Paris", flag: "🇫🇷" }, region: "Europe", airline: "British Airways", aircraft: "A320neo", durationMin: 75, distanceKm: 350, difficulty: 3 },
+  { id: "r12", from: { code: "EDDF", city: "Frankfurt", flag: "🇩🇪" }, to: { code: "LIRF", city: "Rome", flag: "🇮🇹" }, region: "Europe", airline: "Lufthansa", aircraft: "A321neo", durationMin: 110, distanceKm: 960, difficulty: 2 },
+  { id: "r13", from: { code: "EGLL", city: "London", flag: "🇬🇧" }, to: { code: "LEMD", city: "Madrid", flag: "🇪🇸" }, region: "Europe", airline: "British Airways", aircraft: "A350-1000", durationMin: 140, distanceKm: 1260, difficulty: 2 },
+  { id: "r14", from: { code: "EHAM", city: "Amsterdam", flag: "🇳🇱" }, to: { code: "LGAV", city: "Athens", flag: "🇬🇷" }, region: "Europe", airline: "KLM", aircraft: "B737-800", durationMin: 195, distanceKm: 2100, difficulty: 2 },
+  { id: "r15", from: { code: "LFPG", city: "Paris", flag: "🇫🇷" }, to: { code: "EGLL", city: "London", flag: "🇬🇧" }, region: "Europe", airline: "Air France", aircraft: "A320neo", durationMin: 75, distanceKm: 350, difficulty: 4 },
+  { id: "r16", from: { code: "KJFK", city: "New York", flag: "🇺🇸" }, to: { code: "KLAX", city: "Los Angeles", flag: "🇺🇸" }, region: "North America", airline: "American Airlines", aircraft: "A321neo", durationMin: 370, distanceKm: 3980, difficulty: 2 },
+  { id: "r17", from: { code: "CYYZ", city: "Toronto", flag: "🇨🇦" }, to: { code: "KMIA", city: "Miami", flag: "🇺🇸" }, region: "North America", airline: "Air Canada", aircraft: "B737 MAX 8", durationMin: 190, distanceKm: 1980, difficulty: 2 },
+  { id: "r18", from: { code: "KSEA", city: "Seattle", flag: "🇺🇸" }, to: { code: "PANC", city: "Anchorage", flag: "🇺🇸" }, region: "North America", airline: "Delta Air Lines", aircraft: "B737-800", durationMin: 200, distanceKm: 2200, difficulty: 3 },
+  { id: "r19", from: { code: "KDEN", city: "Denver", flag: "🇺🇸" }, to: { code: "KJFK", city: "New York", flag: "🇺🇸" }, region: "North America", airline: "United Airlines", aircraft: "B787-9", durationMin: 220, distanceKm: 2630, difficulty: 3 },
+  { id: "r20", from: { code: "KLAX", city: "Los Angeles", flag: "🇺🇸" }, to: { code: "PHNL", city: "Honolulu", flag: "🇺🇸" }, region: "North America", airline: "United Airlines", aircraft: "B777-300ER", durationMin: 340, distanceKm: 4110, difficulty: 2 },
+  { id: "r21", from: { code: "SBGR", city: "São Paulo", flag: "🇧🇷" }, to: { code: "SCEL", city: "Santiago", flag: "🇨🇱" }, region: "South America", airline: "LATAM", aircraft: "A350-900", durationMin: 235, distanceKm: 2500, difficulty: 4 },
+  { id: "r22", from: { code: "SBGR", city: "São Paulo", flag: "🇧🇷" }, to: { code: "KMIA", city: "Miami", flag: "🇺🇸" }, region: "South America", airline: "LATAM", aircraft: "B777-300ER", durationMin: 530, distanceKm: 6700, difficulty: 2 },
+  { id: "r23", from: { code: "FAOR", city: "Johannesburg", flag: "🇿🇦" }, to: { code: "HAAB", city: "Addis Ababa", flag: "🇪🇹" }, region: "Africa", airline: "Ethiopian Airlines", aircraft: "B787-9", durationMin: 250, distanceKm: 3450, difficulty: 2 },
+  { id: "r24", from: { code: "FAOR", city: "Johannesburg", flag: "🇿🇦" }, to: { code: "LTFM", city: "Istanbul", flag: "🇹🇷" }, region: "Africa", airline: "Turkish Airlines", aircraft: "A350-900", durationMin: 610, distanceKm: 7700, difficulty: 2 },
+  { id: "r25", from: { code: "FACT", city: "Cape Town", flag: "🇿🇦" }, to: { code: "FAOR", city: "Johannesburg", flag: "🇿🇦" }, region: "Africa", airline: "South African Airways", aircraft: "A320neo", durationMin: 125, distanceKm: 1270, difficulty: 2 },
+  { id: "r26", from: { code: "KJFK", city: "New York", flag: "🇺🇸" }, to: { code: "WSSS", city: "Singapore", flag: "🇸🇬" }, region: "Asia", airline: "Singapore Airlines", aircraft: "A350-900", durationMin: 1080, distanceKm: 15300, difficulty: 3 },
+  { id: "r27", from: { code: "EGLL", city: "London", flag: "🇬🇧" }, to: { code: "WSSS", city: "Singapore", flag: "🇸🇬" }, region: "Asia", airline: "British Airways", aircraft: "B777-300ER", durationMin: 755, distanceKm: 10870, difficulty: 2 },
+];
+
+const PRIORITY = {
+  must: { label: "Must fly", color: "var(--amber)", bg: "var(--amber-soft)" },
+  really: { label: "Really want to", color: "var(--cyan)", bg: "var(--cyan-soft)" },
+  someday: { label: "Someday", color: "var(--text2)", bg: "var(--panel2)" },
+};
+
+const STATUS = {
+  planned: { label: "Planned", color: "var(--amber)", bg: "var(--amber-soft)" },
+  "in-progress": { label: "In progress", color: "var(--cyan)", bg: "var(--cyan-soft)" },
+  completed: { label: "Completed", color: "var(--green)", bg: "var(--green-soft)" },
+};
+
+const NAV = [
+  { id: "home", label: "Home", icon: Home },
+  { id: "wishlist", label: "Wishlist", icon: Heart },
+  { id: "flights", label: "Flights", icon: ListChecks },
+  { id: "surprise", label: "Surprise me", icon: Dices },
+  { id: "stats", label: "Stats", icon: BarChart3 },
+];
+const NAV_BOTTOM = [
+  { id: "hangar", label: "Hangar", icon: Plane },
+  { id: "settings", label: "Settings", icon: Settings2 },
+];
+
+/* ================================ format ================================ */
+
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+
+const fmtDur = (min) => {
+  if (min == null || isNaN(min)) return "—";
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+};
+
+const fmtKm = (km) => (km == null || isNaN(km) ? "—" : `${Math.round(km).toLocaleString()} km`);
+
+const fmtDate = (iso) => {
+  if (!iso) return "No date set";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+};
+
+const bucketOf = (min) => (min < 120 ? "short" : min < 360 ? "medium" : min < 720 ? "long" : "ultra");
+const BUCKET_LABEL = { short: "Short · <2h", medium: "Medium · 2–6h", long: "Long · 6–12h", ultra: "Ultra-long · 12h+" };
+
+/* ============================= global style ============================= */
+
+function GlobalStyle() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+      :root{
+        --bg:#0A121D; --panel:#101B2A; --panel2:#0D1622; --raised:#152337;
+        --border:#22334A; --border-soft:#1A2A3B;
+        --amber:#F2A65E; --amber-soft:#332512;
+        --cyan:#5ED3C0; --cyan-soft:#123330;
+        --green:#8FD17A; --green-soft:#1B2E17;
+        --red:#E2685C; --red-soft:#331A17;
+        --text:#EAF1F8; --text2:#8FA3B8; --text3:#54687D;
+        --mono:'IBM Plex Mono', ui-monospace, monospace;
+        --sans:'Space Grotesk', sans-serif;
+      }
+      .fj *{box-sizing:border-box;}
+      .fj{background:var(--bg); color:var(--text); font-family:var(--sans);}
+      .fj .mono{font-family:var(--mono);}
+      .fj .card{background:var(--panel); border:1px solid var(--border); border-radius:16px;}
+      .fj .card-soft{background:var(--panel2); border:1px solid var(--border-soft); border-radius:14px;}
+      .fj .input{background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:10px; padding:9px 12px; font-family:var(--sans); font-size:14px; width:100%; outline:none;}
+      .fj .input:focus{border-color:var(--amber);}
+      .fj textarea.input{resize:vertical; font-family:var(--sans);}
+      .fj .btn{font-family:var(--sans); font-weight:600; border-radius:10px; padding:10px 16px; font-size:14px; cursor:pointer; border:1px solid transparent; display:inline-flex; align-items:center; gap:8px; transition:transform .12s ease, opacity .15s ease, border-color .15s ease; white-space:nowrap;}
+      .fj .btn:active{transform:scale(0.97);}
+      .fj .btn-primary{background:var(--amber); color:#1A1206;}
+      .fj .btn-primary:hover{opacity:.88;}
+      .fj .btn-secondary{background:transparent; border-color:var(--border); color:var(--text);}
+      .fj .btn-secondary:hover{border-color:var(--amber); color:var(--amber);}
+      .fj .btn-ghost{background:transparent; color:var(--text2); border-color:transparent;}
+      .fj .btn-ghost:hover{color:var(--text);}
+      .fj .btn-danger{background:transparent; border-color:var(--red); color:var(--red);}
+      .fj .btn-danger:hover{background:var(--red-soft);}
+      .fj .btn:disabled{opacity:.4; cursor:not-allowed;}
+      .fj .icon-btn{padding:8px; border-radius:8px; color:var(--text2); cursor:pointer; display:inline-flex; border:1px solid transparent; background:transparent;}
+      .fj .icon-btn:hover{color:var(--text); background:var(--panel2); border-color:var(--border);}
+      .fj .nav-item{display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:10px; color:var(--text2); cursor:pointer; font-size:14px; font-weight:500;}
+      .fj .nav-item:hover{background:var(--panel2); color:var(--text);}
+      .fj .nav-item.active{background:var(--amber-soft); color:var(--amber);}
+      .fj .chip{border:1px solid var(--border); border-radius:999px; padding:6px 13px; font-size:13px; color:var(--text2); cursor:pointer; background:transparent; font-family:var(--sans);}
+      .fj .chip.active{border-color:var(--amber); color:var(--amber); background:var(--amber-soft);}
+      .fj .pill{display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap;}
+      .fj .divider{height:1px; background:var(--border-soft); border:none; margin:0;}
+      .fj .scroller::-webkit-scrollbar{width:8px; height:8px;}
+      .fj .scroller::-webkit-scrollbar-thumb{background:var(--border); border-radius:8px;}
+      .fj .route-code{font-family:var(--mono); font-weight:600; letter-spacing:0.5px;}
+      .fj .hoverable{transition:border-color .15s ease, transform .15s ease; cursor:pointer;}
+      .fj .hoverable:hover{border-color:var(--amber);}
+      .fj .modal-overlay{position:fixed; inset:0; background:rgba(4,8,13,0.72); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px;}
+      .fj .modal-panel{background:var(--panel); border:1px solid var(--border); border-radius:18px; max-width:600px; width:100%; max-height:88vh; overflow:auto;}
+      .fj label.field-label{font-size:12px; color:var(--text2); margin-bottom:6px; display:block; font-weight:500;}
+      .fj input::placeholder, .fj textarea::placeholder{color:var(--text3);}
+      .fj input[type=checkbox]{accent-color:var(--amber); width:15px; height:15px;}
+      .fj input[type=radio]{accent-color:var(--amber); width:15px; height:15px;}
+      .fj select.input{appearance:none;}
+      .fj .tile{background:var(--panel2); border:1px solid var(--border-soft); border-radius:14px; padding:14px;}
+      .fj a{color:inherit;}
+      .fj :focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+    `}</style>
+  );
+}
+
+/* ============================== ui primitives ============================ */
+
+function Pill({ meta, children }) {
+  return <span className="pill" style={{ color: meta.color, background: meta.bg }}>{children || meta.label}</span>;
+}
+
+function RouteCode({ from, to, size = 22 }) {
+  return (
+    <div className="mono" style={{ fontSize: size, fontWeight: 700, display: "flex", alignItems: "center", gap: 10 }}>
+      <span>{from?.flag ? from.flag + " " : ""}{from?.code || "----"}</span>
+      <ArrowRight size={size * 0.7} color="var(--text3)" />
+      <span>{to?.flag ? to.flag + " " : ""}{to?.code || "----"}</span>
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children, width }) {
+  return (
+    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-panel scroller" style={width ? { maxWidth: width } : undefined}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px", borderBottom: "1px solid var(--border-soft)", position: "sticky", top: 0, background: "var(--panel)" }}>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>{title}</div>
+          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div style={{ padding: 20 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return <div style={{ marginBottom: 14 }}><label className="field-label">{label}</label>{children}</div>;
+}
+
+function Row({ children, gap = 12 }) {
+  return <div style={{ display: "flex", gap, flexWrap: "wrap" }}>{children}</div>;
+}
+function Col({ children }) {
+  return <div style={{ flex: "1 1 160px", minWidth: 140 }}>{children}</div>;
+}
+
+function EmptyState({ icon: Icon, title, subtitle, action }) {
+  return (
+    <div className="card-soft" style={{ padding: "40px 24px", textAlign: "center" }}>
+      <Icon size={28} color="var(--text3)" style={{ marginBottom: 10 }} />
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      <div style={{ color: "var(--text2)", fontSize: 14, marginBottom: action ? 16 : 0 }}>{subtitle}</div>
+      {action}
+    </div>
+  );
+}
+
+function StarRating({ value, size = 15 }) {
+  if (value == null) return <span style={{ color: "var(--text3)" }}>Not rated</span>;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <Star size={size} color="var(--amber)" fill="var(--amber)" />
+      <span className="mono" style={{ fontWeight: 600 }}>{value}/10</span>
+    </span>
+  );
+}
+
+/* =================================== HOME ================================ */
+
+function HomeScreen({ profile, flights, setScreen, setWishlistModal, setLogDraft, setDetailFlight }) {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const planned = flights.filter((f) => f.status === "planned" || f.status === "in-progress")
+    .sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+  const next = planned[0];
+  const completed = flights.filter((f) => f.status === "completed").sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const recent = completed.slice(0, 5);
+
+  const totalMin = completed.reduce((s, f) => s + (f.durationMin || 0), 0);
+  const airports = new Set(completed.flatMap((f) => [f.from?.code, f.to?.code]).filter(Boolean));
+  const aircraft = new Set(completed.map((f) => f.aircraft).filter(Boolean));
+  const rated = completed.filter((f) => f.rating != null);
+  const avgRating = rated.length ? (rated.reduce((s, f) => s + f.rating, 0) / rated.length).toFixed(1) : "—";
+
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>{greeting}, {profile.name}</div>
+
+      <div className="card hoverable" style={{ padding: 22, marginBottom: 22, cursor: next ? "pointer" : "default" }} onClick={() => next && setDetailFlight(next)}>
+        <div style={{ fontSize: 12, color: "var(--text2)", marginBottom: 10, fontWeight: 500 }}>Your next flight</div>
+        {next ? (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+            <div>
+              <RouteCode from={next.from} to={next.to} size={26} />
+              <div style={{ color: "var(--text2)", fontSize: 14, marginTop: 8 }}>
+                {next.airline} · {next.aircraft} · {fmtDur(next.durationMin)} · {fmtDate(next.date)}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+              <Pill meta={STATUS[next.status]} />
+              <button className="btn btn-secondary" onClick={(e) => { e.stopPropagation(); setDetailFlight(next); }}>View flight <ChevronRight size={15} /></button>
+            </div>
+          </div>
+        ) : (
+          <EmptyState icon={PlaneTakeoff} title="Nothing on the schedule" subtitle="Plan a flight from your wishlist, or roll the dice for a surprise." />
+        )}
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", marginBottom: 10 }}>Quick actions</div>
+      <Row gap={10}>
+        <button className="btn btn-secondary" onClick={() => setWishlistModal({})}><Heart size={15} /> Add to wishlist</button>
+        <button className="btn btn-secondary" onClick={() => setScreen("surprise")}><Dices size={15} /> Surprise me</button>
+        <button className="btn btn-secondary" onClick={() => setLogDraft({ mode: "new" })}><Plus size={15} /> Log flight</button>
+        <button className="btn btn-secondary" onClick={() => setScreen("hangar")}><Plane size={15} /> My hangar</button>
+      </Row>
+
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", margin: "26px 0 10px" }}>Your flying at a glance</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10, marginBottom: 26 }}>
+        {[
+          ["Flights", completed.length],
+          ["Flight time", fmtDur(totalMin)],
+          ["Airports", airports.size],
+          ["Aircraft", aircraft.size],
+          ["Avg rating", avgRating === "—" ? "—" : `${avgRating}/10`],
+        ].map(([label, val]) => (
+          <div key={label} className="tile">
+            <div className="mono" style={{ fontSize: 20, fontWeight: 700 }}>{val}</div>
+            <div style={{ fontSize: 12, color: "var(--text2)" }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text2)", marginBottom: 10 }}>Recently flown</div>
+      {recent.length === 0 ? (
+        <EmptyState icon={PlaneLanding} title="No flights logged yet" subtitle="Once you complete a flight, it will show up here." />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {recent.map((f) => (
+            <div key={f.id} className="card-soft hoverable" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }} onClick={() => setDetailFlight(f)}>
+              <RouteCode from={f.from} to={f.to} size={16} />
+              <div style={{ fontSize: 13, color: "var(--text2)", flex: 1, textAlign: "left" }}>{f.airline} · {f.aircraft}</div>
+              <StarRating value={f.rating} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================================ WISHLIST ================================ */
+
+function WishlistScreen({ wishlist, setWishlistModal, deleteWishlistItem, setPlanDraft }) {
+  const [filter, setFilter] = useState("all");
+  const items = filter === "all" ? wishlist : wishlist.filter((w) => w.priority === filter);
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ fontSize: 22, fontWeight: 700 }}>Wishlist</div>
+        <button className="btn btn-primary" onClick={() => setWishlistModal({})}><Plus size={15} /> New flight</button>
+      </div>
+
+      <Row gap={8}>
+        {[["all", "All"], ["must", "Must fly"], ["really", "Really want to"], ["someday", "Someday"]].map(([id, label]) => (
+          <button key={id} className={"chip" + (filter === id ? " active" : "")} onClick={() => setFilter(id)}>{label}</button>
+        ))}
+      </Row>
+
+      <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+        {items.length === 0 && (
+          <EmptyState icon={Heart} title="Your wishlist is empty" subtitle="Add a flight you've always wanted to fly." action={<button className="btn btn-primary" onClick={() => setWishlistModal({})}>Add a flight</button>} />
+        )}
+        {items.map((w) => (
+          <div key={w.id} className="card" style={{ padding: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <RouteCode from={w.from} to={w.to} size={20} />
+                <div style={{ color: "var(--text2)", fontSize: 13, marginTop: 6 }}>
+                  {w.airline}{w.flightNumber ? ` · ${w.flightNumber}` : ""} · {w.aircraft} · {fmtDur(w.durationMin)}
+                </div>
+                {w.notes && <div style={{ color: "var(--text2)", fontSize: 13, marginTop: 8, maxWidth: 480 }}>{w.notes}</div>}
+                {w.tags?.length > 0 && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    {w.tags.map((t) => <span key={t} className="chip" style={{ padding: "3px 10px", fontSize: 11 }}>{t}</span>)}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10 }}>
+                <Pill meta={PRIORITY[w.priority]} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button className="icon-btn" title="Edit" onClick={() => setWishlistModal(w)}><Pencil size={15} /></button>
+                  <button className="icon-btn" title="Delete" onClick={() => deleteWishlistItem(w.id)}><Trash2 size={15} /></button>
+                </div>
+                <button className="btn btn-secondary" onClick={() => setPlanDraft({ ...w, sourceWishlistId: w.id })}>Plan flight <ChevronRight size={15} /></button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WishlistModal({ item, ownedModels, onClose, onSave }) {
+  const [form, setForm] = useState({
+    id: item.id, fromCode: item.from?.code || "", fromCity: item.from?.city || "",
+    toCode: item.to?.code || "", toCity: item.to?.city || "", airline: item.airline || "",
+    aircraft: item.aircraft || "", flightNumber: item.flightNumber || "",
+    hours: item.durationMin != null ? Math.floor(item.durationMin / 60) : "", minutes: item.durationMin != null ? item.durationMin % 60 : "",
+    priority: item.priority || "must", region: item.region || "Oceania", notes: item.notes || "",
+    tags: (item.tags || []).join(", "),
+  });
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const submit = () => {
+    if (!form.fromCode || !form.toCode) return;
+    onSave({
+      id: form.id, from: { code: form.fromCode.toUpperCase(), city: form.fromCity },
+      to: { code: form.toCode.toUpperCase(), city: form.toCity }, airline: form.airline,
+      aircraft: form.aircraft, flightNumber: form.flightNumber,
+      durationMin: (parseInt(form.hours) || 0) * 60 + (parseInt(form.minutes) || 0),
+      priority: form.priority, region: form.region, notes: form.notes,
+      tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+    });
+  };
+
+  return (
+    <Modal title={item.id ? "Edit wishlist flight" : "New wishlist flight"} onClose={onClose}>
+      <Row>
+        <Col><Field label="From airport code"><input className="input" placeholder="NZWN" value={form.fromCode} onChange={set("fromCode")} /></Field></Col>
+        <Col><Field label="Departure city"><input className="input" placeholder="Wellington" value={form.fromCity} onChange={set("fromCity")} /></Field></Col>
+      </Row>
+      <Row>
+        <Col><Field label="To airport code"><input className="input" placeholder="YSSY" value={form.toCode} onChange={set("toCode")} /></Field></Col>
+        <Col><Field label="Arrival city"><input className="input" placeholder="Sydney" value={form.toCity} onChange={set("toCity")} /></Field></Col>
+      </Row>
+      <Row>
+        <Col><Field label="Airline">
+          <input className="input" list="airlines-list" value={form.airline} onChange={set("airline")} placeholder="Air New Zealand" />
+          <datalist id="airlines-list">{AIRLINES.map((a) => <option key={a} value={a} />)}</datalist>
+        </Field></Col>
+        <Col><Field label="Aircraft">
+          <input className="input" list="aircraft-list" value={form.aircraft} onChange={set("aircraft")} placeholder="B737-800" />
+          <datalist id="aircraft-list">{(ownedModels.length ? ownedModels : AIRCRAFT_MODELS).map((a) => <option key={a} value={a} />)}</datalist>
+        </Field></Col>
+      </Row>
+      <Row>
+        <Col><Field label="Flight number (optional)"><input className="input" placeholder="NZ289" value={form.flightNumber} onChange={set("flightNumber")} /></Field></Col>
+        <Col>
+          <Field label="Approx. duration">
+            <div style={{ display: "flex", gap: 8 }}>
+              <input className="input" type="number" min="0" placeholder="h" value={form.hours} onChange={set("hours")} />
+              <input className="input" type="number" min="0" max="59" placeholder="m" value={form.minutes} onChange={set("minutes")} />
+            </div>
+          </Field>
+        </Col>
+      </Row>
+      <Row>
+        <Col><Field label="Region">
+          <select className="input" value={form.region} onChange={set("region")}>{REGIONS.map((r) => <option key={r}>{r}</option>)}</select>
+        </Field></Col>
+        <Col><Field label="Priority">
+          <select className="input" value={form.priority} onChange={set("priority")}>
+            <option value="must">Must fly</option>
+            <option value="really">Really want to</option>
+            <option value="someday">Someday</option>
+          </select>
+        </Field></Col>
+      </Row>
+      <Field label="Notes"><textarea className="input" rows={3} value={form.notes} onChange={set("notes")} placeholder="Why this flight is on your list…" /></Field>
+      <Field label="Tags (comma separated)"><input className="input" value={form.tags} onChange={set("tags")} placeholder="#LongHaul, #FirstFlight" /></Field>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit}>Save to wishlist</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ================================ FLIGHTS ================================ */
+
+function FlightsScreen({ flights, setDetailFlight }) {
+  const [tab, setTab] = useState("upcoming");
+  const [q, setQ] = useState("");
+
+  const byTab = {
+    upcoming: flights.filter((f) => f.status === "planned"),
+    "in-progress": flights.filter((f) => f.status === "in-progress"),
+    completed: flights.filter((f) => f.status === "completed"),
+  };
+  let list = byTab[tab].sort((a, b) => (tab === "completed" ? (b.date || "").localeCompare(a.date || "") : (a.date || "9999").localeCompare(b.date || "9999")));
+  if (q.trim()) {
+    const s = q.toLowerCase();
+    list = list.filter((f) => [f.from?.code, f.to?.code, f.airline, f.aircraft, f.flightNumber].join(" ").toLowerCase().includes(s));
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Flights</div>
+      <Row gap={8}>
+        {[["upcoming", `Upcoming (${byTab.upcoming.length})`], ["in-progress", `In progress (${byTab["in-progress"].length})`], ["completed", `Completed (${byTab.completed.length})`]].map(([id, label]) => (
+          <button key={id} className={"chip" + (tab === id ? " active" : "")} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </Row>
+
+      <div style={{ position: "relative", margin: "16px 0" }}>
+        <Search size={15} color="var(--text3)" style={{ position: "absolute", left: 12, top: 11 }} />
+        <input className="input" style={{ paddingLeft: 34, maxWidth: 320 }} placeholder="Search route, airline, aircraft…" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {list.length === 0 && (
+          <EmptyState icon={ListChecks} title="Nothing here yet"
+            subtitle={tab === "completed" ? "Log a flight to start building your history." : "Plan a flight from your wishlist or Surprise Me."} />
+        )}
+        {list.map((f) => (
+          <div key={f.id} className="card hoverable" style={{ padding: 16, cursor: "pointer" }} onClick={() => setDetailFlight(f)}>
+            <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <RouteCode from={f.from} to={f.to} size={19} />
+                <div style={{ color: "var(--text2)", fontSize: 13, marginTop: 6 }}>
+                  {f.airline}{f.flightNumber ? ` · ${f.flightNumber}` : ""} · {f.aircraft} · {fmtDur(f.durationMin)}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+                <Pill meta={STATUS[f.status]} />
+                <div style={{ fontSize: 12, color: "var(--text3)" }}>{fmtDate(f.date)}</div>
+                {f.status === "completed" && <StarRating value={f.rating} size={13} />}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FlightDetailModal({ flight: f, onClose, onStart, onComplete, onEdit, onDelete }) {
+  const [confirmDel, setConfirmDel] = useState(false);
+  return (
+    <Modal title="Flight details" onClose={onClose}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+        <RouteCode from={f.from} to={f.to} size={26} />
+        <Pill meta={STATUS[f.status]} />
+      </div>
+      <div style={{ color: "var(--text2)", marginBottom: 18, fontSize: 14 }}>
+        {f.airline}{f.flightNumber ? ` · ${f.flightNumber}` : ""} · {f.aircraft}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 18 }}>
+        <div className="tile"><div className="mono" style={{ fontWeight: 700 }}>{fmtDate(f.date)}</div><div style={{ fontSize: 12, color: "var(--text2)" }}>Date</div></div>
+        <div className="tile"><div className="mono" style={{ fontWeight: 700 }}>{fmtDur(f.durationMin)}</div><div style={{ fontSize: 12, color: "var(--text2)" }}>Flight time</div></div>
+        <div className="tile"><div className="mono" style={{ fontWeight: 700 }}>{fmtKm(f.distanceKm)}</div><div style={{ fontSize: 12, color: "var(--text2)" }}>Distance</div></div>
+        {f.status === "completed" && <div className="tile"><StarRating value={f.rating} /><div style={{ fontSize: 12, color: "var(--text2)", marginTop: 4 }}>Rating</div></div>}
+      </div>
+
+      {f.notes && <div style={{ marginBottom: 16 }}><label className="field-label">Notes</label><div style={{ fontSize: 14, lineHeight: 1.5 }}>{f.notes}</div></div>}
+
+      {f.screenshots?.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <label className="field-label">Screenshots</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {f.screenshots.map((s, i) => (
+              <span key={i} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Camera size={13} /> {s}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {f.tags?.length > 0 && (
+        <div style={{ marginBottom: 16, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {f.tags.map((t) => <span key={t} className="chip" style={{ fontSize: 11 }}>{t}</span>)}
+        </div>
+      )}
+
+      <hr className="divider" style={{ margin: "18px 0" }} />
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <button className="btn btn-danger" onClick={() => (confirmDel ? onDelete() : setConfirmDel(true))}>
+          <Trash2 size={15} /> {confirmDel ? "Confirm delete" : "Delete"}
+        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          {f.status === "planned" && <button className="btn btn-secondary" onClick={onStart}>Start flight</button>}
+          {f.status === "in-progress" && <button className="btn btn-primary" onClick={onComplete}>Complete flight</button>}
+          {f.status === "completed" && <button className="btn btn-secondary" onClick={onEdit}><Pencil size={14} /> Edit log</button>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* =========================== PLAN + LOG MODALS =========================== */
+
+function PlanModal({ draft, onClose, onConfirm }) {
+  const [date, setDate] = useState("");
+  const [flightNumber, setFlightNumber] = useState(draft.flightNumber || "");
+  return (
+    <Modal title="Plan this flight" onClose={onClose} width={460}>
+      <div style={{ marginBottom: 16 }}>
+        <RouteCode from={draft.from} to={draft.to} size={22} />
+        <div style={{ color: "var(--text2)", fontSize: 13, marginTop: 6 }}>{draft.airline} · {draft.aircraft} · {fmtDur(draft.durationMin)}</div>
+      </div>
+      <Field label="Planned date"><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+      <Field label="Flight number (optional)"><input className="input" value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} placeholder="NZ101" /></Field>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={() => onConfirm({ ...draft, date, flightNumber })}>Add to planned flights</button>
+      </div>
+    </Modal>
+  );
+}
+
+function LogFlightModal({ draft, onClose, onSubmit }) {
+  const base = draft.flight || {};
+  const isNew = draft.mode === "new";
+  const [form, setForm] = useState({
+    fromCode: base.from?.code || "", fromCity: base.from?.city || "",
+    toCode: base.to?.code || "", toCity: base.to?.city || "",
+    airline: base.airline || "", aircraft: base.aircraft || "", flightNumber: base.flightNumber || "",
+    date: base.date || new Date().toISOString().slice(0, 10),
+    hours: base.durationMin != null ? Math.floor(base.durationMin / 60) : "",
+    minutes: base.durationMin != null ? base.durationMin % 60 : "",
+    distanceKm: base.distanceKm ?? "",
+    rating: base.rating ?? 8,
+    notes: base.notes || "",
+    tags: (base.tags || []).join(", "),
+    screenshots: base.screenshots || [],
+  });
+  const [shotInput, setShotInput] = useState("");
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  const addShot = () => {
+    if (!shotInput.trim()) return;
+    setForm({ ...form, screenshots: [...form.screenshots, shotInput.trim()] });
+    setShotInput("");
+  };
+  const removeShot = (i) => setForm({ ...form, screenshots: form.screenshots.filter((_, idx) => idx !== i) });
+
+  const submit = () => {
+    if (isNew && (!form.fromCode || !form.toCode)) return;
+    onSubmit({
+      from: { code: form.fromCode.toUpperCase(), city: form.fromCity },
+      to: { code: form.toCode.toUpperCase(), city: form.toCity },
+      airline: form.airline, aircraft: form.aircraft, flightNumber: form.flightNumber,
+      date: form.date,
+      durationMin: (parseInt(form.hours) || 0) * 60 + (parseInt(form.minutes) || 0),
+      distanceKm: form.distanceKm === "" ? null : parseFloat(form.distanceKm),
+      rating: form.rating === "" ? null : parseInt(form.rating),
+      notes: form.notes,
+      tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      screenshots: form.screenshots,
+    });
+  };
+
+  return (
+    <Modal title={isNew ? "Log a flight" : draft.mode === "edit" ? "Edit flight log" : "Complete this flight"} onClose={onClose}>
+      {isNew ? (
+        <>
+          <Row>
+            <Col><Field label="From airport code"><input className="input" value={form.fromCode} onChange={set("fromCode")} placeholder="NZAA" /></Field></Col>
+            <Col><Field label="Departure city"><input className="input" value={form.fromCity} onChange={set("fromCity")} placeholder="Auckland" /></Field></Col>
+          </Row>
+          <Row>
+            <Col><Field label="To airport code"><input className="input" value={form.toCode} onChange={set("toCode")} placeholder="YSSY" /></Field></Col>
+            <Col><Field label="Arrival city"><input className="input" value={form.toCity} onChange={set("toCity")} placeholder="Sydney" /></Field></Col>
+          </Row>
+          <Row>
+            <Col><Field label="Airline">
+              <input className="input" list="airlines-list2" value={form.airline} onChange={set("airline")} />
+              <datalist id="airlines-list2">{AIRLINES.map((a) => <option key={a} value={a} />)}</datalist>
+            </Field></Col>
+            <Col><Field label="Aircraft">
+              <input className="input" list="aircraft-list2" value={form.aircraft} onChange={set("aircraft")} />
+              <datalist id="aircraft-list2">{AIRCRAFT_MODELS.map((a) => <option key={a} value={a} />)}</datalist>
+            </Field></Col>
+          </Row>
+          <Field label="Flight number (optional)"><input className="input" value={form.flightNumber} onChange={set("flightNumber")} /></Field>
+        </>
+      ) : (
+        <div style={{ marginBottom: 16 }}>
+          <RouteCode from={base.from} to={base.to} size={22} />
+          <div style={{ color: "var(--text2)", fontSize: 13, marginTop: 6 }}>{base.airline}{base.flightNumber ? ` · ${base.flightNumber}` : ""} · {base.aircraft}</div>
+        </div>
+      )}
+
+      <Row>
+        <Col><Field label="Date"><input className="input" type="date" value={form.date} onChange={set("date")} /></Field></Col>
+        <Col>
+          <Field label="Flight time">
+            <div style={{ display: "flex", gap: 8 }}>
+              <input className="input" type="number" min="0" placeholder="h" value={form.hours} onChange={set("hours")} />
+              <input className="input" type="number" min="0" max="59" placeholder="m" value={form.minutes} onChange={set("minutes")} />
+            </div>
+          </Field>
+        </Col>
+      </Row>
+      <Field label="Distance flown, km (optional)"><input className="input" type="number" value={form.distanceKm} onChange={set("distanceKm")} placeholder="2160" /></Field>
+
+      <Field label={`Rating — ${form.rating}/10`}>
+        <input type="range" min="1" max="10" value={form.rating} onChange={set("rating")} style={{ width: "100%", accentColor: "var(--amber)" }} />
+      </Field>
+
+      <Field label="Notes">
+        <textarea className="input" rows={4} value={form.notes} onChange={set("notes")} placeholder="How did it go? Any turbulence, tricky approaches, great views…" />
+      </Field>
+
+      <Field label="Screenshots">
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <input className="input" value={shotInput} onChange={(e) => setShotInput(e.target.value)} placeholder="e.g. Approach into Sydney" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addShot())} />
+          <button className="btn btn-secondary" onClick={addShot}><Camera size={14} /> Add</button>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {form.screenshots.map((s, i) => (
+            <span key={i} className="chip" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Camera size={12} /> {s}
+              <X size={12} style={{ cursor: "pointer" }} onClick={() => removeShot(i)} />
+            </span>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Tags (comma separated)"><input className="input" value={form.tags} onChange={set("tags")} placeholder="#NightFlight, #Rain" /></Field>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" onClick={submit}><Check size={15} /> Save flight log</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* =============================== SURPRISE ME ============================= */
+
+function SurpriseScreen({ hangar, ownedModels, wishlist, setPlanDraft, setWishlistModal }) {
+  const [aircraftMode, setAircraftMode] = useState("owned"); // owned | specific
+  const [specificAircraft, setSpecificAircraft] = useState([]);
+  const [buckets, setBuckets] = useState(["short", "medium"]);
+  const [regionMode, setRegionMode] = useState("anywhere");
+  const [regions, setRegions] = useState([]);
+  const [source, setSource] = useState("catalog"); // catalog | wishlist
+  const [airlineMode, setAirlineMode] = useState("any");
+  const [airlines, setAirlines] = useState([]);
+  const [result, setResult] = useState(null);
+  const [resultSource, setResultSource] = useState("catalog");
+  const [noMatch, setNoMatch] = useState(false);
+
+  const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+
+  const roll = () => {
+    setNoMatch(false);
+    let pool = source === "wishlist"
+      ? wishlist.map((w) => ({ ...w, distanceKm: null, difficulty: null }))
+      : ROUTES;
+
+    if (aircraftMode === "owned") {
+      if (ownedModels.length === 0) { setNoMatch(true); setResult(null); return; }
+      pool = pool.filter((p) => ownedModels.includes(p.aircraft));
+    } else if (specificAircraft.length > 0) {
+      pool = pool.filter((p) => specificAircraft.includes(p.aircraft));
+    }
+    if (regionMode === "select" && regions.length > 0) pool = pool.filter((p) => regions.includes(p.region));
+    if (buckets.length > 0) pool = pool.filter((p) => buckets.includes(bucketOf(p.durationMin)));
+    if (airlineMode === "select" && airlines.length > 0) pool = pool.filter((p) => airlines.includes(p.airline));
+
+    if (pool.length === 0) { setNoMatch(true); setResult(null); return; }
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    setResult(pick);
+    setResultSource(source);
+  };
+
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Surprise me</div>
+      <div style={{ color: "var(--text2)", fontSize: 14, marginBottom: 20 }}>Set your filters, then roll for a flight to fly next.</div>
+
+      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>Aircraft</div>
+        <Row gap={8}>
+          <button className={"chip" + (aircraftMode === "owned" ? " active" : "")} onClick={() => setAircraftMode("owned")}>Any aircraft I own</button>
+          <button className={"chip" + (aircraftMode === "specific" ? " active" : "")} onClick={() => setAircraftMode("specific")}>Choose specific</button>
+        </Row>
+        {aircraftMode === "owned" && ownedModels.length === 0 && (
+          <div style={{ marginTop: 10, fontSize: 13, color: "var(--red)" }}>Your hangar has no owned aircraft yet — add one first.</div>
+        )}
+        {aircraftMode === "specific" && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {(hangar.map((a) => a.model).filter((v, i, arr) => arr.indexOf(v) === i)).map((m) => (
+              <button key={m} className={"chip" + (specificAircraft.includes(m) ? " active" : "")} onClick={() => toggle(specificAircraft, setSpecificAircraft, m)}>{m}</button>
+            ))}
+            {hangar.length === 0 && <div style={{ fontSize: 13, color: "var(--text2)" }}>No aircraft in your hangar yet.</div>}
+          </div>
+        )}
+
+        <div style={{ fontWeight: 600, margin: "20px 0 10px", fontSize: 14 }}>Flight length</div>
+        <Row gap={8}>
+          {Object.entries(BUCKET_LABEL).map(([id, label]) => (
+            <button key={id} className={"chip" + (buckets.includes(id) ? " active" : "")} onClick={() => toggle(buckets, setBuckets, id)}>{label}</button>
+          ))}
+        </Row>
+
+        <div style={{ fontWeight: 600, margin: "20px 0 10px", fontSize: 14 }}>Region</div>
+        <Row gap={8}>
+          <button className={"chip" + (regionMode === "anywhere" ? " active" : "")} onClick={() => setRegionMode("anywhere")}>Anywhere</button>
+          <button className={"chip" + (regionMode === "select" ? " active" : "")} onClick={() => setRegionMode("select")}>Choose regions</button>
+        </Row>
+        {regionMode === "select" && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {REGIONS.map((r) => <button key={r} className={"chip" + (regions.includes(r) ? " active" : "")} onClick={() => toggle(regions, setRegions, r)}>{r}</button>)}
+          </div>
+        )}
+
+        <div style={{ fontWeight: 600, margin: "20px 0 10px", fontSize: 14 }}>Source</div>
+        <Row gap={8}>
+          <button className={"chip" + (source === "catalog" ? " active" : "")} onClick={() => setSource("catalog")}>Generate something new</button>
+          <button className={"chip" + (source === "wishlist" ? " active" : "")} onClick={() => setSource("wishlist")}>Only from my wishlist</button>
+        </Row>
+
+        <div style={{ fontWeight: 600, margin: "20px 0 10px", fontSize: 14 }}>Airlines</div>
+        <Row gap={8}>
+          <button className={"chip" + (airlineMode === "any" ? " active" : "")} onClick={() => setAirlineMode("any")}>Any airline</button>
+          <button className={"chip" + (airlineMode === "select" ? " active" : "")} onClick={() => setAirlineMode("select")}>Choose airlines</button>
+        </Row>
+        {airlineMode === "select" && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, maxHeight: 130, overflowY: "auto" }} className="scroller">
+            {AIRLINES.map((a) => <button key={a} className={"chip" + (airlines.includes(a) ? " active" : "")} onClick={() => toggle(airlines, setAirlines, a)}>{a}</button>)}
+          </div>
+        )}
+
+        <button className="btn btn-primary" style={{ marginTop: 22, width: "100%", justifyContent: "center", padding: "13px 16px" }} onClick={roll}>
+          <Dices size={17} /> Roll
+        </button>
+      </div>
+
+      {noMatch && (
+        <EmptyState icon={Dices} title="No flights match those filters" subtitle="Try widening your length, region, or aircraft choices." />
+      )}
+
+      {result && (
+        <div className="card" style={{ padding: 22 }}>
+          <div style={{ fontSize: 12, color: "var(--amber)", fontWeight: 600, marginBottom: 10 }}>Your surprise flight</div>
+          <RouteCode from={result.from} to={result.to} size={28} />
+          <div style={{ color: "var(--text2)", marginTop: 10, fontSize: 14 }}>{result.airline} · {result.aircraft}</div>
+          <div style={{ display: "flex", gap: 18, marginTop: 14, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 13, color: "var(--text2)", display: "flex", alignItems: "center", gap: 6 }}><Clock3 size={14} /> {fmtDur(result.durationMin)}</div>
+            {result.distanceKm != null && <div style={{ fontSize: 13, color: "var(--text2)", display: "flex", alignItems: "center", gap: 6 }}><MapPin size={14} /> {fmtKm(result.distanceKm)}</div>}
+            {result.difficulty != null && <div style={{ fontSize: 13, color: "var(--text2)", display: "flex", alignItems: "center", gap: 6 }}><Gauge size={14} /> Difficulty {result.difficulty}/5</div>}
+          </div>
+          <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="btn btn-secondary" onClick={roll}><RefreshCw size={14} /> Roll again</button>
+            {resultSource !== "wishlist" && (
+              <button className="btn btn-secondary" onClick={() => setWishlistModal({ from: result.from, to: result.to, airline: result.airline, aircraft: result.aircraft, durationMin: result.durationMin, region: result.region, priority: "really" })}>
+                <Heart size={14} /> Add to wishlist
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={() => setPlanDraft({ ...result, sourceWishlistId: resultSource === "wishlist" ? result.id : undefined })}>Plan flight</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================================= HANGAR ================================ */
+
+function HangarScreen({ hangar, toggleOwned, removeAircraft, setAircraftModal }) {
+  const groups = hangar.reduce((acc, a) => { (acc[a.airline] = acc[a.airline] || []).push(a); return acc; }, {});
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 700 }}>My hangar</div>
+          <div style={{ color: "var(--text2)", fontSize: 13 }}>Aircraft you own here feed into Surprise Me.</div>
+        </div>
+        <button className="btn btn-primary" onClick={() => setAircraftModal(true)}><Plus size={15} /> Add aircraft</button>
+      </div>
+
+      {hangar.length === 0 && <EmptyState icon={Plane} title="No aircraft yet" subtitle="Add the liveries and aircraft you fly in MSFS." />}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {Object.entries(groups).map(([airline, list]) => (
+          <div key={airline} className="card" style={{ padding: 18 }}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>{airline}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {list.map((a) => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderRadius: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 999, background: a.owned ? "var(--green)" : "var(--red)", cursor: "pointer" }} title={a.owned ? "Owned — click to mark not owned" : "Not owned — click to mark owned"} onClick={() => toggleOwned(a.id)} />
+                    <span className="mono">{a.model}</span>
+                  </div>
+                  <button className="icon-btn" onClick={() => removeAircraft(a.id)}><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AircraftModal({ onClose, onSave }) {
+  const [airline, setAirline] = useState("");
+  const [model, setModel] = useState("");
+  const [owned, setOwned] = useState(true);
+  return (
+    <Modal title="Add aircraft" onClose={onClose} width={440}>
+      <Field label="Airline / livery">
+        <input className="input" list="airlines-list3" value={airline} onChange={(e) => setAirline(e.target.value)} placeholder="Air New Zealand" />
+        <datalist id="airlines-list3">{AIRLINES.map((a) => <option key={a} value={a} />)}</datalist>
+      </Field>
+      <Field label="Aircraft model">
+        <input className="input" list="aircraft-list3" value={model} onChange={(e) => setModel(e.target.value)} placeholder="B787-9" />
+        <datalist id="aircraft-list3">{AIRCRAFT_MODELS.map((a) => <option key={a} value={a} />)}</datalist>
+      </Field>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 8, cursor: "pointer" }}>
+        <input type="checkbox" checked={owned} onChange={(e) => setOwned(e.target.checked)} /> I own this in MSFS
+      </label>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn btn-primary" disabled={!airline || !model} onClick={() => onSave({ airline, model, owned })}>Add to hangar</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ================================== STATS ================================= */
+
+function StatsScreen({ flights }) {
+  const completed = flights.filter((f) => f.status === "completed");
+  const totalMin = completed.reduce((s, f) => s + (f.durationMin || 0), 0);
+  const totalKm = completed.reduce((s, f) => s + (f.distanceKm || 0), 0);
+  const airports = new Set(completed.flatMap((f) => [f.from?.code, f.to?.code]).filter(Boolean));
+  const aircraftSet = new Set(completed.map((f) => f.aircraft).filter(Boolean));
+  const airlineSet = new Set(completed.map((f) => f.airline).filter(Boolean));
+  const rated = completed.filter((f) => f.rating != null);
+  const avgRating = rated.length ? (rated.reduce((s, f) => s + f.rating, 0) / rated.length).toFixed(1) : "—";
+
+  const byAircraft = {};
+  const byAirline = {};
+  completed.forEach((f) => {
+    if (f.aircraft) { byAircraft[f.aircraft] = byAircraft[f.aircraft] || { count: 0, min: 0 }; byAircraft[f.aircraft].count++; byAircraft[f.aircraft].min += f.durationMin || 0; }
+    if (f.airline) { byAirline[f.airline] = byAirline[f.airline] || { count: 0 }; byAirline[f.airline].count++; }
+  });
+  const aircraftRows = Object.entries(byAircraft).sort((a, b) => b[1].count - a[1].count);
+  const airlineRows = Object.entries(byAirline).sort((a, b) => b[1].count - a[1].count);
+  const maxAircraft = Math.max(1, ...aircraftRows.map(([, v]) => v.count));
+  const maxAirline = Math.max(1, ...airlineRows.map(([, v]) => v.count));
+
+  if (completed.length === 0) {
+    return (
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Stats</div>
+        <EmptyState icon={BarChart3} title="No completed flights yet" subtitle="Your statistics will build up as you log flights." />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Stats</div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 26 }}>
+        {[
+          ["Flights", completed.length], ["Flight time", fmtDur(totalMin)], ["Airports", airports.size],
+          ["Aircraft", aircraftSet.size], ["Airlines", airlineSet.size], ["Distance", fmtKm(totalKm)],
+          ["Avg rating", avgRating === "—" ? "—" : `${avgRating}/10`],
+        ].map(([label, val]) => (
+          <div key={label} className="tile"><div className="mono" style={{ fontSize: 19, fontWeight: 700 }}>{val}</div><div style={{ fontSize: 12, color: "var(--text2)" }}>{label}</div></div>
+        ))}
+      </div>
+
+      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <div style={{ fontWeight: 600, marginBottom: 14 }}>Aircraft flown</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {aircraftRows.map(([name, v]) => (
+            <div key={name}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                <span className="mono">{name}</span>
+                <span style={{ color: "var(--text2)" }}>{v.count} flights · {fmtDur(v.min)}</span>
+              </div>
+              <div style={{ height: 6, background: "var(--panel2)", borderRadius: 999 }}>
+                <div style={{ height: 6, width: `${(v.count / maxAircraft) * 100}%`, background: "var(--amber)", borderRadius: 999 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ fontWeight: 600, marginBottom: 14 }}>Airlines flown</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {airlineRows.map(([name, v]) => (
+            <div key={name}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                <span>{name}</span>
+                <span style={{ color: "var(--text2)" }}>{v.count} flights</span>
+              </div>
+              <div style={{ height: 6, background: "var(--panel2)", borderRadius: 999 }}>
+                <div style={{ height: 6, width: `${(v.count / maxAirline) * 100}%`, background: "var(--cyan)", borderRadius: 999 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================= SETTINGS =============================== */
+
+function SettingsScreen({ profile, updProfile, updHangar, updFlights, updWishlist }) {
+  const [name, setName] = useState(profile.name);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Settings</div>
+      <div className="card" style={{ padding: 20, marginBottom: 16, maxWidth: 420 }}>
+        <Field label="Your name">
+          <div style={{ display: "flex", gap: 8 }}>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+            <button className="btn btn-secondary" onClick={() => updProfile({ ...profile, name: name || "Pilot" })}>Save</button>
+          </div>
+        </Field>
+      </div>
+
+      <div className="card" style={{ padding: 20, maxWidth: 420, borderColor: "var(--red)" }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Danger zone</div>
+        <div style={{ color: "var(--text2)", fontSize: 13, marginBottom: 12 }}>Clears your wishlist, flights and hangar. This can't be undone.</div>
+        <button className="btn btn-danger" onClick={() => {
+          if (confirmClear) {
+            updHangar([]);
+            updFlights([]);
+            updWishlist([]);
+            setConfirmClear(false);
+          } else setConfirmClear(true);
+        }}>{confirmClear ? "Confirm clear all data" : "Clear all data"}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================= APP ROOT ================================ */
+
+function App() {
+  const [loaded, setLoaded] = useState(false);
+  const [screen, setScreen] = useState("home");
+  const [profile, setProfile] = useState({ name: "Pilot" });
+  const [hangar, setHangar] = useState([]);
+  const [wishlist, setWishlist] = useState([]);
+  const [flights, setFlights] = useState([]);
+
+  const [wishlistModal, setWishlistModal] = useState(null);
+  const [aircraftModal, setAircraftModal] = useState(false);
+  const [planDraft, setPlanDraft] = useState(null);
+  const [logDraft, setLogDraft] = useState(null);
+  const [detailFlight, setDetailFlight] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const [h, w, f, p] = await Promise.all([
+        loadKey("hangar", []),
+        loadKey("wishlist", []),
+        loadKey("flights", []),
+        loadKey("profile", null),
+      ]);
+      setHangar(h);
+      setWishlist(w);
+      setFlights(f);
+      setProfile(p ?? { name: "Pilot" });
+      setLoaded(true);
+    })();
+  }, []);
+
+  const updHangar = (next) => { setHangar(next); saveKey("hangar", next); };
+  const updWishlist = (next) => { setWishlist(next); saveKey("wishlist", next); };
+  const updFlights = (next) => { setFlights(next); saveKey("flights", next); };
+  const updProfile = (next) => { setProfile(next); saveKey("profile", next); };
+
+  const saveWishlistItem = (item) => {
+    if (item.id) {
+      updWishlist(wishlist.map((w) => (w.id === item.id ? item : w)));
+    } else {
+      updWishlist([{ ...item, id: uid() }, ...wishlist]);
+    }
+    setWishlistModal(null);
+  };
+  const deleteWishlistItem = (id) => updWishlist(wishlist.filter((w) => w.id !== id));
+
+  const addAircraft = (a) => { updHangar([{ ...a, id: uid() }, ...hangar]); setAircraftModal(false); };
+  const toggleOwned = (id) => updHangar(hangar.map((a) => (a.id === id ? { ...a, owned: !a.owned } : a)));
+  const removeAircraft = (id) => updHangar(hangar.filter((a) => a.id !== id));
+
+  const confirmPlan = (draft) => {
+    const flight = {
+      id: uid(), status: "planned",
+      from: draft.from, to: draft.to, airline: draft.airline, aircraft: draft.aircraft,
+      flightNumber: draft.flightNumber || "", date: draft.date || "",
+      durationMin: draft.durationMin, distanceKm: draft.distanceKm ?? null,
+      notes: "", tags: [],
+    };
+    updFlights([flight, ...flights]);
+    if (draft.sourceWishlistId) updWishlist(wishlist.filter((w) => w.id !== draft.sourceWishlistId));
+    setPlanDraft(null);
+    setScreen("flights");
+  };
+  const startFlight = (id) => updFlights(flights.map((f) => (f.id === id ? { ...f, status: "in-progress" } : f)));
+  const completeFlight = (id, details) => {
+    updFlights(flights.map((f) => (f.id === id ? { ...f, ...details, status: "completed" } : f)));
+    setLogDraft(null);
+    setDetailFlight(null);
+  };
+  const logNewFlight = (details) => {
+    const flight = { id: uid(), status: "completed", ...details };
+    updFlights([flight, ...flights]);
+    setLogDraft(null);
+  };
+  const deleteFlight = (id) => { updFlights(flights.filter((f) => f.id !== id)); setDetailFlight(null); };
+  const editCompleted = (id, details) => {
+    updFlights(flights.map((f) => (f.id === id ? { ...f, ...details } : f)));
+    setLogDraft(null);
+  };
+
+  const ownedModels = useMemo(() => hangar.filter((a) => a.owned).map((a) => a.model), [hangar]);
+
+  if (!loaded) {
+    return (
+      <div className="fj" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <GlobalStyle />
+        <div style={{ color: "var(--text2)", display: "flex", alignItems: "center", gap: 10 }}>
+          <PlaneTakeoff size={20} className="mono" />
+          Preparing the flight deck…
+        </div>
+      </div>
+    );
+  }
+
+  const screenProps = {
+    profile, updProfile, hangar, updHangar, wishlist, updWishlist, flights, updFlights, ownedModels,
+    setScreen, setWishlistModal, setAircraftModal, setPlanDraft, setLogDraft, setDetailFlight,
+    deleteWishlistItem, toggleOwned, removeAircraft, startFlight, deleteFlight,
+  };
+
+  return (
+    <div className="fj" style={{ minHeight: "100vh", display: "flex" }}>
+      <GlobalStyle />
+
+      <div className="scroller" style={{ width: 220, borderRight: "1px solid var(--border-soft)", padding: "18px 12px", display: "none", flexDirection: "column", gap: 4 }} data-rail>
+        <style>{`@media(min-width:820px){ [data-rail]{display:flex !important;} [data-tabbar]{display:none !important;} }`}</style>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 10px 18px" }}>
+          <PlaneTakeoff size={22} color="var(--amber)" />
+          <div style={{ fontWeight: 700, fontSize: 15, lineHeight: 1.1 }}>Flight Journal</div>
+        </div>
+        {NAV.map((n) => (
+          <div key={n.id} className={"nav-item" + (screen === n.id ? " active" : "")} onClick={() => setScreen(n.id)}>
+            <n.icon size={17} /> {n.label}
+          </div>
+        ))}
+        <hr className="divider" style={{ margin: "12px 4px" }} />
+        {NAV_BOTTOM.map((n) => (
+          <div key={n.id} className={"nav-item" + (screen === n.id ? " active" : "")} onClick={() => setScreen(n.id)}>
+            <n.icon size={17} /> {n.label}
+          </div>
+        ))}
+      </div>
+
+      <div className="scroller" style={{ flex: 1, overflowY: "auto", padding: "24px 20px 90px" }}>
+        <div style={{ maxWidth: 920, margin: "0 auto" }}>
+          {screen === "home" && <HomeScreen {...screenProps} />}
+          {screen === "wishlist" && <WishlistScreen {...screenProps} />}
+          {screen === "flights" && <FlightsScreen {...screenProps} />}
+          {screen === "surprise" && <SurpriseScreen {...screenProps} />}
+          {screen === "stats" && <StatsScreen {...screenProps} />}
+          {screen === "hangar" && <HangarScreen {...screenProps} />}
+          {screen === "settings" && <SettingsScreen {...screenProps} />}
+        </div>
+      </div>
+
+      <div data-tabbar style={{ position: "fixed", bottom: 0, left: 0, right: 0, display: "flex", justifyContent: "space-around", background: "var(--panel)", borderTop: "1px solid var(--border-soft)", padding: "8px 4px", zIndex: 30 }}>
+        {[...NAV, NAV_BOTTOM[0]].map((n) => (
+          <div key={n.id} onClick={() => setScreen(n.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, color: screen === n.id ? "var(--amber)" : "var(--text2)", fontSize: 10, fontWeight: 600, padding: "2px 6px" }}>
+            <n.icon size={18} />
+            {n.label}
+          </div>
+        ))}
+      </div>
+
+      {wishlistModal !== null && (
+        <WishlistModal item={wishlistModal} ownedModels={ownedModels} onClose={() => setWishlistModal(null)} onSave={saveWishlistItem} />
+      )}
+      {aircraftModal && <AircraftModal onClose={() => setAircraftModal(false)} onSave={addAircraft} />}
+      {planDraft && <PlanModal draft={planDraft} onClose={() => setPlanDraft(null)} onConfirm={confirmPlan} />}
+      {logDraft && (
+        <LogFlightModal
+          draft={logDraft}
+          onClose={() => setLogDraft(null)}
+          onSubmit={(details) => {
+            if (logDraft.mode === "new") logNewFlight(details);
+            else if (logDraft.mode === "complete") completeFlight(logDraft.flight.id, details);
+            else if (logDraft.mode === "edit") editCompleted(logDraft.flight.id, details);
+          }}
+        />
+      )}
+      {detailFlight && (
+        <FlightDetailModal
+          flight={detailFlight}
+          onClose={() => setDetailFlight(null)}
+          onStart={() => { startFlight(detailFlight.id); setDetailFlight(null); }}
+          onComplete={() => { setLogDraft({ mode: "complete", flight: detailFlight }); setDetailFlight(null); }}
+          onEdit={() => { setLogDraft({ mode: "edit", flight: detailFlight }); setDetailFlight(null); }}
+          onDelete={() => deleteFlight(detailFlight.id)}
+        />
+      )}
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
